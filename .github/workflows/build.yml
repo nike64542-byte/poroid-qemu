@@ -61,19 +61,19 @@ jobs:
       - name: 校验 16KB 对齐
         run: |
           python3 - out/jniLibs/libqemu-system-aarch64.so << 'EOF'
-import struct, sys
-with open(sys.argv[1], 'rb') as f: data = f.read()
-e_phoff = struct.unpack_from('<Q', data, 32)[0]
-e_phentsize = struct.unpack_from('<H', data, 54)[0]
-e_phnum = struct.unpack_from('<H', data, 56)[0]
-ok = True
-for i in range(e_phnum):
-    off = e_phoff + i * e_phentsize
-    if struct.unpack_from('<I', data, off)[0] == 1:
-        if struct.unpack_from('<Q', data, off + 48)[0] < 16384: ok = False
-assert ok, "not 16KB aligned"
-print("16KB aligned OK")
-EOF
+          import struct, sys
+          with open(sys.argv[1], 'rb') as f: data = f.read()
+          e_phoff = struct.unpack_from('<Q', data, 32)[0]
+          e_phentsize = struct.unpack_from('<H', data, 54)[0]
+          e_phnum = struct.unpack_from('<H', data, 56)[0]
+          ok = True
+          for i in range(e_phnum):
+              off = e_phoff + i * e_phentsize
+              if struct.unpack_from('<I', data, off)[0] == 1:
+                  if struct.unpack_from('<Q', data, off + 48)[0] < 16384: ok = False
+          assert ok, "not 16KB aligned"
+          print("16KB aligned OK")
+          EOF
 
       - name: 打包 QEMU 资源
         run: |
