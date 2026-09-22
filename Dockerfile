@@ -114,21 +114,8 @@ RUN cp /opt/qemu-out/bin/qemu-system-aarch64 /opt/qemu-out/libqemu-system-aarch6
     && patchelf --replace-needed libslirp.so.0 libslirp.so /opt/qemu-out/libqemu-system-aarch64.so
 
 # ==============================================================================
-# SECTION 3: Final Artifacts Stage
+# Export Stage
 # ==============================================================================
-
-FROM scratch AS final
-# Initramfs
-COPY --from=packer /output/vmlinuz-virt /vmlinuz-virt
-COPY --from=packer /output/initrd.img /initrd.img
-# QEMU
-COPY --from=qemu-builder /opt/qemu-out/libqemu-system-aarch64.so /libqemu-system-aarch64.so
-COPY --from=qemu-builder /opt/qemu-out/libslirp.so /libslirp.so
-COPY --from=qemu-builder /opt/qemu-out/libpodroid-bridge.so /libpodroid-bridge.so
-COPY --from=qemu-builder /opt/qemu-out/libpodroid-launcher.so /libpodroid-launcher.so
-COPY --from=qemu-builder /opt/qemu-out/share/qemu/efi-virtio.rom /qemu/efi-virtio.rom
-COPY --from=qemu-builder /opt/qemu-out/share/qemu/keymaps/ /qemu/keymaps/
-
 
 FROM scratch AS export
 COPY --from=qemu-builder /opt/qemu-out/libqemu-system-aarch64.so /libqemu-system-aarch64.so
