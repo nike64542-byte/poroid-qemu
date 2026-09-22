@@ -1,0 +1,113 @@
+name: 构建 QEMU (poroid-qemu)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'podroid-bridge.c'
+      - 'podroid-launcher.c'
+      - 'build-tools/**'
+  workflow_dispatch:
+    inputs:
+      qemu_version:
+        description: 'QEMU 版本'
+        required: false
+        default: '11.0.4'
+        type: string
+      push_to_release:
+        description: '上传到 GitHub Release'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  build-qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 释放磁盘空间
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc 2>/dev/null || true
+          df -h
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建 QEMU
+        run: |
+          QVER="${{ github.event.inputs.qemu_version || '11.0.4' }}"
+          echo "QEMU_VERSION=${QVER}" >> $GITHUB_ENV
+          docker build --build-arg "QEMU_VERSION=${QVER}" \
+            -t podroid-qemu-builder --target qemu-builder .
+
+      - name: 提取产物
+        run: |
+          docker rm -f podroid-qemu-extract 2>/dev/null || true
+          docker create --name podroid-qemu-extract podroid-qemu-builder /bin/true
+          mkdir -p out/jniLibs out/assets/qemu/keymaps
+          docker cp podroid-qemu-extract:/opt/qemu-out/libqemu-system-aarch64.so out/jniLibs/
+          docker cp podroid-qemu-extract:/opt/qemu-out/libslirp.so               out/jniLibs/
+          docker cp podroid-qemu-extract:/opt/qemu-out/libpodroid-bridge.so      out/jniLibs/
+          docker cp podroid-qemu-extract:/opt/qemu-out/libpodroid-launcher.so    out/jniLibs/
+          docker cp podroid-qemu-extract:/opt/qemu-out/share/qemu/efi-virtio.rom out/assets/qemu/
+          docker cp podroid-qemu-extract:/opt/qemu-out/share/qemu/keymaps/.       out/assets/qemu/keymaps/
+          docker rm podroid-qemu-extract >/dev/null
+          ls -lh out/jniLibs/ out/assets/qemu/
+
+      - name: 校验 16KB 对齐
+        run: |
+          python3 - out/jniLibs/libqemu-system-aarch64.so << 'EOF'
+import struct, sys
+with open(sys.argv[1], 'rb') as f: data = f.read()
+e_phoff = struct.unpack_from('<Q', data, 32)[0]
+e_phentsize = struct.unpack_from('<H', data, 54)[0]
+e_phnum = struct.unpack_from('<H', data, 56)[0]
+ok = True
+for i in range(e_phnum):
+    off = e_phoff + i * e_phentsize
+    if struct.unpack_from('<I', data, off)[0] == 1:
+        if struct.unpack_from('<Q', data, off + 48)[0] < 16384: ok = False
+assert ok, "not 16KB aligned"
+print("16KB aligned OK")
+EOF
+
+      - name: 打包 QEMU 资源
+        run: |
+          tar czf out/qemu-assets.tar.gz -C out/assets/qemu .
+          ls -lh out/qemu-assets.tar.gz
+
+      - name: 清理 Docker 镜像
+        run: |
+          docker rmi -f podroid-qemu-builder 2>/dev/null || true
+          docker system prune -af 2>/dev/null || true
+          rm -rf ~/.gradle/daemon 2>/dev/null || true
+          df -h /
+
+      - name: 上传 QEMU 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-binaries
+          path: |
+            out/jniLibs/*.so
+            out/qemu-assets.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传到 Release
+        if: inputs.push_to_release != false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --title "最新 QEMU" --notes "QEMU $QEMU_VERSION" --prerelease
+          gh release upload latest \
+            out/jniLibs/libqemu-system-aarch64.so \
+            out/jniLibs/libslirp.so \
+            out/jniLibs/libpodroid-bridge.so \
+            out/jniLibs/libpodroid-launcher.so \
+            out/qemu-assets.tar.gz \
+            --clobber

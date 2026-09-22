@@ -1,0 +1,13 @@
+# Build outputs
+out/
+qemu-src/
+qemu-build/
+*.tar.gz
+*.so
+*.rom
+
+# Android NDK
+local.properties
+
+# Docker
+.kotlin/
