@@ -75,9 +75,20 @@ jobs:
           print("16KB aligned OK")
           EOF
 
-      - name: 打包 QEMU 资源
+      - name: 打包 QEMU 资源（含 .so）
         run: |
-          tar czf out/qemu-assets.tar.gz -C out/assets/qemu .
+          # 单包提供全部运行时产物：APK 只需下载这一个文件。
+          # 结构（解包到 APK filesDir）：
+          #   libqemu-system-aarch64.so / libslirp.so /
+          #   libpodroid-bridge.so / libpodroid-launcher.so  -> 顶层
+          #   qemu/efi-virtio.rom, qemu/keymaps/            -> 子目录
+          mkdir -p out/qemu-full
+          cp out/jniLibs/libqemu-system-aarch64.so out/qemu-full/
+          cp out/jniLibs/libslirp.so                out/qemu-full/
+          cp out/jniLibs/libpodroid-bridge.so       out/qemu-full/
+          cp out/jniLibs/libpodroid-launcher.so     out/qemu-full/
+          cp -r out/assets/qemu                     out/qemu-full/qemu
+          tar czf out/qemu-assets.tar.gz -C out/qemu-full .
           ls -lh out/qemu-assets.tar.gz
 
       - name: 清理 Docker 镜像
